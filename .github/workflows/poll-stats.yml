@@ -1,0 +1,52 @@
+name: Poll Moltbook Stats
+
+on:
+  schedule:
+    # Run every hour at minute 0
+    - cron: '0 * * * *'
+  workflow_dispatch: # Allow manual trigger for testing
+
+permissions:
+  contents: write
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Fetch stats and append to CSV
+        run: |
+          RESPONSE=$(curl -sf https://www.moltbook.com/api/v1/stats)
+
+          if [ $? -ne 0 ] || [ -z "$RESPONSE" ]; then
+            echo "Failed to fetch stats, skipping this run"
+            exit 0
+          fi
+
+          SUCCESS=$(echo "$RESPONSE" | jq -r '.success')
+          if [ "$SUCCESS" != "true" ]; then
+            echo "API returned success=false, skipping"
+            exit 0
+          fi
+
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          AGENTS=$(echo "$RESPONSE" | jq -r '.agents')
+          SUBMOLTS=$(echo "$RESPONSE" | jq -r '.submolts')
+          POSTS=$(echo "$RESPONSE" | jq -r '.posts')
+          COMMENTS=$(echo "$RESPONSE" | jq -r '.comments')
+          LAST_UPDATED=$(echo "$RESPONSE" | jq -r '.last_updated')
+
+          echo "${TIMESTAMP},${AGENTS},${SUBMOLTS},${POSTS},${COMMENTS},${LAST_UPDATED}" >> data/stats.csv
+
+          echo "Logged: ${TIMESTAMP} — ${AGENTS} agents, ${POSTS} posts, ${COMMENTS} comments, ${SUBMOLTS} submolts"
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/stats.csv
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "📊 stats: $(tail -1 data/stats.csv | cut -d',' -f1-5)"
+          git push
