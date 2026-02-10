@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Moltbook Growth Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      background: #0b0b10;
+      color: #eee;
+      font-family: 'Space Grotesk', sans-serif;
+      padding: 32px 24px;
+    }
+
+    .container { max-width: 720px; margin: 0 auto; }
+
+    /* Header */
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    .status-dot.ok   { background: #4caf50; box-shadow: 0 0 8px #4caf5088; }
+    .status-dot.err  { background: #f44336; box-shadow: 0 0 8px #f4433688; }
+    .status-dot.load { background: #ffa726; box-shadow: 0 0 8px #ffa72688; }
+
+    .status-label {
+      font-size: 11px; color: #666;
+      text-transform: uppercase; letter-spacing: 2px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    h1 { font-size: 32px; font-weight: 700; letter-spacing: -0.5px; }
+    .subtitle {
+      color: #555; font-size: 13px; margin-top: 6px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Cards */
+    .cards { display: flex; flex-direction: column; gap: 16px; margin-top: 28px; }
+
+    .card {
+      background: rgba(20, 20, 28, 0.7);
+      border-radius: 12px;
+      padding: 20px 20px 12px 20px;
+      border: 1px solid rgba(255,255,255,0.06);
+      position: relative;
+      overflow: hidden;
+    }
+    .card-gradient-line {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      opacity: 0.7;
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 12px;
+    }
+    .metric-label {
+      font-size: 11px; color: #666;
+      text-transform: uppercase; letter-spacing: 1.5px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .metric-value {
+      font-size: 26px; font-weight: 700; color: #eee;
+      font-family: 'Space Grotesk', sans-serif;
+      margin-top: 2px;
+    }
+    .delta-badge {
+      font-size: 13px; font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
+      padding: 3px 8px;
+      border-radius: 6px;
+    }
+    .window-label {
+      font-size: 10px; color: #555; margin-top: 4px;
+      font-family: 'JetBrains Mono', monospace;
+      text-align: right;
+    }
+    .chart-wrap { height: 180px; }
+
+    /* Loading / Error states */
+    .state-box {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      height: 300px; gap: 12px;
+      color: #555;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+    }
+    .spinner {
+      width: 24px; height: 24px;
+      border: 2px solid #555;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    .error-box {
+      padding: 16px 20px;
+      background: rgba(244,67,54,0.08);
+      border: 1px solid rgba(244,67,54,0.2);
+      border-radius: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: #f44336;
+    }
+
+    /* Footer */
+    .footer {
+      margin-top: 24px;
+      padding: 12px 16px;
+      background: rgba(255,255,255,0.03);
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.05);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #555;
+      text-align: center;
+    }
+
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    @keyframes spin  { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div style="margin-bottom: 28px;">
+      <div class="status-row">
+        <div id="status-dot" class="status-dot load"></div>
+        <span class="status-label">Monitoring the Situation</span>
+      </div>
+      <h1>Moltbook Growth</h1>
+      <p id="subtitle" class="subtitle" style="display:none;"></p>
+    </div>
+
+    <!-- State containers -->
+    <div id="loading" class="state-box">
+      <div class="spinner"></div>
+      Fetching from GitHub...
+    </div>
+    <div id="error" class="error-box" style="display:none;"></div>
+
+    <!-- Charts -->
+    <div id="cards" class="cards" style="display:none;"></div>
+
+    <!-- Footer -->
+    <div id="footer" class="footer" style="display:none;">
+      data pulled live from repo · points positioned by actual timestamp · github.com/gabriel-berzescu/monitoring-the-situation
+    </div>
+  </div>
+
+<script>
+const CSV_URL = 'https://raw.githubusercontent.com/gabriel-berzescu/monitoring-the-situation/main/data/stats.csv';
+
+const METRICS = [
+  { key: 'agents',   label: 'Agents',   color: '#e8553d', gradient: ['#e8553d','#ff8a65'] },
+  { key: 'submolts', label: 'Submolts', color: '#7c4dff', gradient: ['#7c4dff','#b388ff'] },
+  { key: 'posts',    label: 'Posts',    color: '#00bfa5', gradient: ['#00bfa5','#64ffda'] },
+  { key: 'comments', label: 'Comments', color: '#ffa726', gradient: ['#ffa726','#ffcc80'] },
+];
+
+/* ── helpers ── */
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(',');
+  return lines.slice(1).map(line => {
+    const vals = line.split(',');
+    const row = {};
+    headers.forEach((h, i) => row[h.trim()] = vals[i]?.trim());
+    return {
+      time: new Date(row.timestamp).getTime(),
+      agents:   parseInt(row.agents, 10),
+      submolts: parseInt(row.submolts, 10),
+      posts:    parseInt(row.posts, 10),
+      comments: parseInt(row.comments, 10),
+    };
+  });
+}
+
+function formatNumber(n) {
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return n.toString();
+}
+
+function formatFull(n) { return n.toLocaleString(); }
+
+function formatTimeUTC(ts) {
+  const d = new Date(ts);
+  const h = String(d.getUTCHours()).padStart(2, '0');
+  const m = String(d.getUTCMinutes()).padStart(2, '0');
+  return h + ':' + m;
+}
+
+function formatDateUTC(ts) {
+  const d = new Date(ts);
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return months[d.getUTCMonth()] + ' ' + d.getUTCDate() + ', ' +
+    String(d.getUTCHours()).padStart(2,'0') + ':' +
+    String(d.getUTCMinutes()).padStart(2,'0') + ' UTC';
+}
+
+function computeWindowLabel(data) {
+  const ms = data[data.length - 1].time - data[0].time;
+  const hours = Math.round(ms / 3600000);
+  if (hours < 48) return '~' + hours + 'h window';
+  return '~' + Math.round(hours / 24) + 'd window';
+}
+
+function generateTicks(timeMin, timeMax) {
+  const ticks = [];
+  const start = new Date(timeMin);
+  start.setUTCMinutes(0, 0, 0);
+  let t = start.getTime();
+  while (t <= timeMax + 3600000) {
+    if (t >= timeMin - 1800000) ticks.push(t);
+    t += 3 * 3600000;
+  }
+  return ticks;
+}
+
+/* Does data span more than 1 calendar day? */
+function spansMultipleDays(data) {
+  const first = new Date(data[0].time);
+  const last = new Date(data[data.length - 1].time);
+  return first.getUTCDate() !== last.getUTCDate() ||
+         first.getUTCMonth() !== last.getUTCMonth();
+}
+
+function tickLabel(ts, multiDay) {
+  const d = new Date(ts);
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  if (!multiDay) return hh + ':' + mm;
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return months[d.getUTCMonth()] + ' ' + d.getUTCDate() + ' ' + hh + ':' + mm;
+}
+
+/* ── build a single card ── */
+function buildCard(metric, data) {
+  const values = data.map(d => d[metric.key]);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const pad = (max - min) * 0.08;
+  const delta = values[values.length - 1] - values[0];
+  const pct = ((delta / values[0]) * 100).toFixed(1);
+  const windowLabel = computeWindowLabel(data);
+
+  const timeMin = data[0].time;
+  const timeMax = data[data.length - 1].time;
+  const ticks = generateTicks(timeMin, timeMax);
+  const multiDay = spansMultipleDays(data);
+
+  /* DOM */
+  const card = document.createElement('div');
+  card.className = 'card';
+
+  /* gradient line */
+  const gradLine = document.createElement('div');
+  gradLine.className = 'card-gradient-line';
+  gradLine.style.background = 'linear-gradient(90deg,' + metric.gradient[0] + ',' + metric.gradient[1] + ')';
+  card.appendChild(gradLine);
+
+  /* header */
+  const header = document.createElement('div');
+  header.className = 'card-header';
+  header.innerHTML =
+    '<div>' +
+      '<div class="metric-label">' + metric.label + '</div>' +
+      '<div class="metric-value">' + formatNumber(values[values.length - 1]) + '</div>' +
+    '</div>' +
+    '<div>' +
+      '<div class="delta-badge" style="color:' + metric.color + ';background:' + metric.color + '15;">+' +
+        formatNumber(delta) + ' (' + pct + '%)</div>' +
+      '<div class="window-label">' + windowLabel + '</div>' +
+    '</div>';
+  card.appendChild(header);
+
+  /* canvas */
+  const wrap = document.createElement('div');
+  wrap.className = 'chart-wrap';
+  const canvas = document.createElement('canvas');
+  wrap.appendChild(canvas);
+  card.appendChild(wrap);
+
+  /* Chart.js */
+  const ctx = canvas.getContext('2d');
+  const gradient = ctx.createLinearGradient(0, 0, 0, 180);
+  gradient.addColorStop(0, metric.color + '40'); /* 25% opacity */
+  gradient.addColorStop(1, metric.color + '05'); /* ~2% */
+
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      datasets: [{
+        data: data.map(d => ({ x: d.time, y: d[metric.key] })),
+        borderColor: metric.color,
+        borderWidth: 2.5,
+        backgroundColor: gradient,
+        fill: true,
+        pointRadius: 3,
+        pointBackgroundColor: metric.color,
+        pointBorderWidth: 0,
+        pointHoverRadius: 5,
+        pointHoverBackgroundColor: metric.color,
+        pointHoverBorderColor: '#0f0f14',
+        pointHoverBorderWidth: 2,
+        tension: 0.35,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(15, 15, 20, 0.95)',
+          borderColor: metric.color + '44',
+          borderWidth: 1,
+          cornerRadius: 8,
+          padding: { top: 10, bottom: 10, left: 14, right: 14 },
+          titleFont: { family: "'JetBrains Mono', monospace", size: 12, weight: '400' },
+          titleColor: '#888',
+          bodyFont: { family: "'JetBrains Mono', monospace", size: 16, weight: '700' },
+          bodyColor: metric.color,
+          displayColors: false,
+          callbacks: {
+            title: function(items) { return formatDateUTC(items[0].parsed.x); },
+            label: function(item) { return formatFull(item.parsed.y); }
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          min: timeMin,
+          max: timeMax,
+          afterBuildTicks: function(axis) { axis.ticks = ticks.map(v => ({ value: v })); },
+          ticks: {
+            callback: function(v) { return tickLabel(v, multiDay); },
+            color: '#555',
+            font: { family: "'JetBrains Mono', monospace", size: 10 },
+            maxRotation: 0,
+          },
+          grid: { color: 'rgba(255,255,255,0.04)', drawTicks: false },
+          border: { color: 'rgba(255,255,255,0.08)' },
+        },
+        y: {
+          min: min - pad,
+          max: max + pad,
+          ticks: {
+            callback: function(v) { return formatNumber(v); },
+            color: '#555',
+            font: { family: "'JetBrains Mono', monospace", size: 10 },
+            maxTicksLimit: 5,
+          },
+          grid: { color: 'rgba(255,255,255,0.04)', drawTicks: false },
+          border: { display: false },
+        }
+      },
+      interaction: { mode: 'nearest', axis: 'x', intersect: false },
+    }
+  });
+
+  return card;
+}
+
+/* ── main ── */
+async function init() {
+  const dotEl    = document.getElementById('status-dot');
+  const loadEl   = document.getElementById('loading');
+  const errEl    = document.getElementById('error');
+  const cardsEl  = document.getElementById('cards');
+  const subEl    = document.getElementById('subtitle');
+  const footerEl = document.getElementById('footer');
+
+  try {
+    const res = await fetch(CSV_URL);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const text = await res.text();
+    const data = parseCSV(text);
+
+    if (!data.length) throw new Error('CSV is empty');
+
+    /* header */
+    dotEl.className = 'status-dot ok';
+    loadEl.style.display = 'none';
+    cardsEl.style.display = 'flex';
+    subEl.style.display = 'block';
+    footerEl.style.display = 'block';
+
+    const first = new Date(data[0].time);
+    const last  = new Date(data[data.length - 1].time);
+    const fmt = d => {
+      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return months[d.getUTCMonth()] + ' ' + d.getUTCDate() + ' ' +
+        String(d.getUTCHours()).padStart(2,'0') + ':' +
+        String(d.getUTCMinutes()).padStart(2,'0');
+    };
+    subEl.textContent = fmt(first) + ' → ' + fmt(last) + ' UTC · ' + data.length + ' samples · live from GitHub';
+
+    /* render cards */
+    METRICS.forEach(m => cardsEl.appendChild(buildCard(m, data)));
+
+    /* last-fetched note in footer */
+    const now = new Date();
+    footerEl.textContent += ' · fetched ' +
+      String(now.getUTCHours()).padStart(2,'0') + ':' +
+      String(now.getUTCMinutes()).padStart(2,'0') + ' UTC';
+
+  } catch (e) {
+    dotEl.className = 'status-dot err';
+    loadEl.style.display = 'none';
+    errEl.style.display = 'block';
+    errEl.textContent = 'Failed to fetch data: ' + e.message;
+  }
+}
+
+/* auto-refresh every 5 minutes */
+init();
+setInterval(function() {
+  document.getElementById('cards').innerHTML = '';
+  init();
+}, 5 * 60 * 1000);
+</script>
+</body>
+</html>
