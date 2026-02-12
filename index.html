@@ -229,6 +229,7 @@
     <div id="tabs" class="tabs" style="display:none;">
       <button class="tab-btn active" data-tab="timeline">Timeline</button>
       <button class="tab-btn" data-tab="daily-avg">Daily Average</button>
+      <button class="tab-btn" data-tab="daily-datapoints">Daily Datapoints</button>
     </div>
 
     <!-- Daily sub-toggle -->
@@ -731,6 +732,132 @@ function buildDailyPctChangeCard(metric, dailyData) {
   return card;
 }
 
+/* ── build a daily datapoints card ── */
+function buildDailyDatapointsCard(dailyData) {
+  var counts = dailyData.map(function(d) { return d.samples; });
+  var labels = dailyData.map(function(d) { return d.label; });
+  var maxCount = Math.max.apply(null, counts);
+  var pad = Math.max(maxCount * 0.15, 2);
+
+  var avgCount = Math.round(counts.reduce(function(s, v) { return s + v; }, 0) / counts.length * 10) / 10;
+  var totalPoints = counts.reduce(function(s, v) { return s + v; }, 0);
+  var dayCount = counts.length;
+
+  var card = document.createElement('div');
+  card.className = 'card';
+
+  var gradLine = document.createElement('div');
+  gradLine.className = 'card-gradient-line';
+  gradLine.style.background = 'linear-gradient(90deg, #42a5f5, #80d8ff)';
+  card.appendChild(gradLine);
+
+  var header = document.createElement('div');
+  header.className = 'card-header';
+  header.innerHTML =
+    '<div>' +
+      '<div class="metric-label">Datapoints per Day</div>' +
+      '<div class="metric-value">' + avgCount.toFixed(1) + ' avg/day</div>' +
+    '</div>' +
+    '<div>' +
+      '<div class="delta-badge" style="color:#42a5f5;background:#42a5f515;">' +
+        totalPoints + ' total · ' + dayCount + 'd</div>' +
+      '<div class="window-label">ideal = 24/day</div>' +
+    '</div>';
+  card.appendChild(header);
+
+  var wrap = document.createElement('div');
+  wrap.className = 'chart-wrap';
+  var canvas = document.createElement('canvas');
+  wrap.appendChild(canvas);
+  card.appendChild(wrap);
+
+  var ctx = canvas.getContext('2d');
+
+  // Color bars based on how close to 24 they are
+  var barColors = counts.map(function(c) {
+    if (c >= 22) return '#4caf50aa';      // green: near-perfect
+    if (c >= 16) return '#ffa726aa';      // orange: decent
+    return '#f44336aa';                    // red: poor
+  });
+  var barBorders = counts.map(function(c) {
+    if (c >= 22) return '#4caf50';
+    if (c >= 16) return '#ffa726';
+    return '#f44336';
+  });
+  var hoverColors = counts.map(function(c) {
+    if (c >= 22) return '#4caf50';
+    if (c >= 16) return '#ffa726';
+    return '#f44336';
+  });
+
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: counts,
+        backgroundColor: barColors,
+        hoverBackgroundColor: hoverColors,
+        borderColor: barBorders,
+        borderWidth: 1,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(15, 15, 20, 0.95)',
+          borderColor: '#42a5f544',
+          borderWidth: 1,
+          cornerRadius: 8,
+          padding: { top: 10, bottom: 10, left: 14, right: 14 },
+          titleFont: { family: "'JetBrains Mono', monospace", size: 12, weight: '400' },
+          titleColor: '#888',
+          bodyFont: { family: "'JetBrains Mono', monospace", size: 16, weight: '700' },
+          bodyColor: '#42a5f5',
+          displayColors: false,
+          callbacks: {
+            title: function(items) { return labels[items[0].dataIndex]; },
+            label: function(item) {
+              var v = item.parsed.y;
+              var pct = Math.round(v / 24 * 100);
+              return v + ' datapoints (' + pct + '% of 24)';
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: {
+            color: '#555',
+            font: { family: "'JetBrains Mono', monospace", size: 10 },
+            maxRotation: 0,
+          },
+          grid: { color: 'rgba(255,255,255,0.04)', drawTicks: false },
+          border: { color: 'rgba(255,255,255,0.08)' },
+        },
+        y: {
+          min: 0,
+          max: Math.max(maxCount + pad, 26),
+          ticks: {
+            callback: function(v) { return v; },
+            color: '#555',
+            font: { family: "'JetBrains Mono', monospace", size: 10 },
+            maxTicksLimit: 6,
+          },
+          grid: { color: 'rgba(255,255,255,0.04)', drawTicks: false },
+          border: { display: false },
+        }
+      },
+    }
+  });
+
+  return card;
+}
+
 /* ── state ── */
 let cachedData = null;
 let activeTab = 'timeline';
@@ -746,6 +873,10 @@ function renderCards() {
   if (activeTab === 'timeline') {
     toggleEl.style.display = 'none';
     METRICS.forEach(m => cardsEl.appendChild(buildTimelineCard(m, cachedData)));
+  } else if (activeTab === 'daily-datapoints') {
+    toggleEl.style.display = 'none';
+    const daily = computeDailyAverages(cachedData);
+    cardsEl.appendChild(buildDailyDatapointsCard(daily));
   } else {
     toggleEl.style.display = 'flex';
     const daily = computeDailyAverages(cachedData);
