@@ -38,6 +38,11 @@ jobs:
           COMMENTS=$(echo "$RESPONSE" | jq -r '.comments')
           LAST_UPDATED=$(echo "$RESPONSE" | jq -r '.last_updated')
 
+          if [ "$AGENTS" = "0" ] && [ "$SUBMOLTS" = "0" ] && [ "$POSTS" = "0" ] && [ "$COMMENTS" = "0" ]; then
+            echo "All metrics are zero, skipping this datapoint"
+            exit 0
+          fi
+
           echo "${TIMESTAMP},${AGENTS},${SUBMOLTS},${POSTS},${COMMENTS},${LAST_UPDATED}" >> data/stats.csv
 
           echo "Logged: ${TIMESTAMP} — ${AGENTS} agents, ${POSTS} posts, ${COMMENTS} comments, ${SUBMOLTS} submolts"
